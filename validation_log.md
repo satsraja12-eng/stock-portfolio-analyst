@@ -99,3 +99,42 @@ OK
 ```
 *Status: PASSED*
 
+---
+
+## 🟢 Phase 4: External Data Integration
+
+### 1. App Entrypoint Compilation Check
+We verified that the updated Streamlit dashboard integrates the new top-right Settings popover and S&P 500 index downloads with zero compilation or syntax errors.
+
+**Verification Command:**
+```bash
+uv run python3 -m py_compile app.py
+```
+
+**Verification Output:**
+*(No output / exited with code 0)*
+*Status: PASSED*
+
+### 2. External Data Integration Unit Tests
+We added 4 comprehensive unit tests in `utils/external_data_test.py` to verify our sector mappings, dividend yield fundamentals, financial news headlines RSS feeds, and comparative index benchmarking history.
+
+**Test Case Descriptions:**
+- `test_sectors_fetching`: Asserts that active tickers correctly resolve to their appropriate business sectors using yfinance metadata feeds with reliable fallbacks.
+- `test_fundamentals_fetching`: Asserts that critical company profiles and dividend yield rates are retrieved successfully.
+- `test_news_fetching`: Asserts that yfinance RSS news headlines and clickable article links are retrieved dynamically.
+- `test_benchmark_performance`: Asserts that historical price feeds and cumulative returns for the S&P 500 (`^GSPC`) are downloaded and computed correctly.
+
+**Verification Command:**
+```bash
+uv run python3 -m unittest discover -s utils -p "*_test.py"
+```
+
+**Verification Output:**
+```text
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 1.431s
+
+OK
+```
+*Status: PASSED*
