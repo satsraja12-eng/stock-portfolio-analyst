@@ -138,3 +138,42 @@ Ran 11 tests in 1.431s
 OK
 ```
 *Status: PASSED*
+
+---
+
+## 🟢 Phase 5: UI & AI Analyst Orchestration
+
+### 1. App Entrypoint Compilation Check
+We verified that the final Streamlit dashboard integrates the new Groq client, dynamic chat dialogues, suggestion chips, and news grids with zero compilation or syntax errors.
+
+**Verification Command:**
+```bash
+uv run python3 -m py_compile app.py
+```
+
+**Verification Output:**
+*(No output / exited with code 0)*
+*Status: PASSED*
+
+### 2. AI Analyst Agent Unit Tests
+We added 2 comprehensive unit tests in `utils/llm_agent_test.py` to verify our chat agent's prompt injection structure and API error handling stability.
+
+**Test Case Descriptions:**
+- `test_missing_api_key`: Asserts that the agent displays a friendly, actionable UI notification when the Groq API key is omitted rather than crashing.
+- `test_mock_portfolio_context_mapping`: Asserts that our systemic prompt successfully maps all portfolio assets, realized/unrealized gains, sectors, ex-dividend dates, and RSS headlines without formatting failures.
+
+**Verification Command:**
+```bash
+uv run python3 -m unittest discover -s utils -p "*_test.py"
+```
+
+**Verification Output:**
+```text
+.............
+----------------------------------------------------------------------
+Ran 13 tests in 1.889s
+
+OK
+```
+*Status: PASSED*
+

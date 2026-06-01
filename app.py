@@ -15,6 +15,7 @@ from utils.external_data import (
     fetch_news_for_tickers, 
     fetch_benchmark_performance
 )
+from utils.llm_agent import get_ai_response
 
 # Load environment variables
 load_dotenv()
@@ -136,6 +137,32 @@ st.markdown("""
         font-size: 14px;
         color: #a7f3d0;
     }
+    
+    /* Styled Chat Bubble Layout */
+    .chat-bubble-user {
+        background-color: #2563eb;
+        border-radius: 12px 12px 0 12px;
+        padding: 12px 18px;
+        margin-bottom: 10px;
+        max-width: 80%;
+        float: right;
+        clear: both;
+        color: #ffffff;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+    }
+    .chat-bubble-assistant {
+        background-color: rgba(30, 41, 59, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px 12px 12px 0;
+        padding: 15px 20px;
+        margin-bottom: 15px;
+        max-width: 85%;
+        float: left;
+        clear: both;
+        color: #e2e8f0;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.15);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -146,6 +173,8 @@ if "validation_message" not in st.session_state:
     st.session_state.validation_message = ""
 if "groq_api_key" not in st.session_state:
     st.session_state.groq_api_key = os.environ.get("GROQ_API_KEY", "")
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
 # Caching wrappers for API data
 @st.cache_data(ttl=300)
@@ -247,7 +276,6 @@ with header_col2:
         st.markdown("### 📊 Data Status")
         if st.session_state.cleaned_df is not None:
             st.success("✔ Active Portfolio: Loaded")
-            # Get filename
             status_file = "uploaded_data.csv"
             if "loaded_sample_flag" in st.session_state and st.session_state.loaded_sample_flag:
                 status_file = "sample_portfolio.csv"
@@ -303,7 +331,6 @@ with tabs[0]:
             cleaned_df, msg = validate_and_clean_csv(data_source)
             st.session_state.cleaned_df = cleaned_df
             st.session_state.validation_message = msg
-            # Force refresh session state prices
             active_holdings, realized_gains = calculate_fifo_holdings(cleaned_df)
             st.cache_data.clear() # clear cache to get fresh prices
             current_prices = get_cached_prices(list(active_holdings.keys()))
@@ -314,7 +341,6 @@ with tabs[0]:
             st.error(f"❌ Validation Error: {str(ve)}")
             
     if st.session_state.cleaned_df is not None:
-        # Show Validation Alert checkmarks exactly like the screenshot!
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.write("##### **Validation Status**")
         st.markdown('<div class="validation-alert-green">✔ CSV structure valid.</div>', unsafe_allow_html=True)
@@ -322,7 +348,6 @@ with tabs[0]:
         st.markdown('<div class="validation-alert-green">✔ Data types validated.</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Grid metrics
         df = st.session_state.cleaned_df
         total_tx = len(df)
         unique_tickers = df["ticker"].nunique()
@@ -354,12 +379,10 @@ with tabs[1]:
     if st.session_state.cleaned_df is None:
         st.info("⚠️ Please upload your transaction data in the **Data Upload** tab to view your active holdings and portfolio metrics.")
     else:
-        # Load external sectors & fundamentals
         active_tickers = list(active_holdings.keys())
         sectors_mapping = get_cached_sectors(active_tickers)
         fundamentals = get_cached_fundamentals(active_tickers)
         
-        # 1. Dropdown Filter for holdings exactly like screenshot!
         filtered_tickers = st.multiselect(
             "Filter by Tickers", 
             options=active_tickers, 
@@ -370,7 +393,6 @@ with tabs[1]:
         if not filtered_tickers:
             st.warning("Please select at least one ticker to visualize your portfolio data.")
         else:
-            # Aggregate metrics for filtered tickers
             filtered_holdings = {t: h for t, h in active_holdings.items() if t in filtered_tickers}
             
             total_cost_basis = sum(h["total_cost"] for h in filtered_holdings.values())
@@ -386,7 +408,6 @@ with tabs[1]:
             mc3.metric("Total Unrealized Gain", f"${total_unrealized_gain:,.2f}", delta=f"{unrealized_pct:+.2f}%")
             mc4.metric("Total Realized Gain", f"${total_realized_gain:,.2f}")
             
-            # Charts
             st.write("")
             pc_col1, pc_col2 = st.columns(2)
             
@@ -448,10 +469,9 @@ with tabs[1]:
                 st.plotly_chart(fig2, use_container_width=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
-            # Heuristic Allocation AI Summary Card below chart exactly like screenshot!
+            # Heuristic AI Summary Card
             st.markdown('<div class="glass-card" style="background-color: rgba(59, 130, 246, 0.05); border-left: 5px solid #3b82f6;">', unsafe_allow_html=True)
             st.write("🤖 **AI Summary**")
-            # Calculate concentration
             if len(pie_data) > 0:
                 top_holding = pie_data.sort_values(by="Market Value", ascending=False).iloc[0]
                 top_pct = (top_holding["Market Value"] / total_market_val) * 100
@@ -533,7 +553,6 @@ with tabs[2]:
         min_date_val = df["date"].min().to_pydatetime()
         max_date_val = df["date"].max().to_pydatetime()
         
-        # 1. Input Date Range Selector exactly like screenshot!
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         col_dr1, col_dr2 = st.columns([1, 2])
         with col_dr1:
@@ -545,32 +564,24 @@ with tabs[2]:
             )
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Extract filtered date objects
         start_filter = min_date_val
         end_filter = max_date_val
         if isinstance(dr_input, tuple) and len(dr_input) == 2:
             start_filter, end_filter = dr_input
-            # convert date to datetime
             start_filter = datetime(start_filter.year, start_filter.month, start_filter.day)
             end_filter = datetime(end_filter.year, end_filter.month, end_filter.day)
             
-        # Filter transactions based on date range
         df_filtered = df[(df["date"] >= start_filter) & (df["date"] <= end_filter)]
         
         if df_filtered.empty:
             st.warning("No transactions found within the selected date range.")
         else:
-            # Active holdings and realized gains based on filtered range
             filtered_holdings_math, filtered_realized_gains = calculate_fifo_holdings(df_filtered)
-            
-            # Fetch benchmark S&P 500 index history
             benchmark_df = get_cached_benchmark(start_filter, end_filter)
             
-            # Calculate XIRR on filtered data
             xirr = calculate_portfolio_xirr(df_filtered, current_prices, filtered_holdings_math)
             xirr_pct = xirr * 100
             
-            # Lifetime metrics
             buys = df_filtered[df_filtered["transaction_type"] == "Buy"]
             sells = df_filtered[df_filtered["transaction_type"] == "Sell"]
             
@@ -582,13 +593,11 @@ with tabs[2]:
             total_profit = net_worth_inflows - total_cash_invested
             total_roi = (total_profit / total_cash_invested * 100) if total_cash_invested > 0 else 0.0
             
-            # 2. Metric cards row
             hc1, hc2, hc3 = st.columns(3)
             hc1.metric("Total Investment", f"${total_cash_invested:,.2f}")
             hc2.metric("Total Proceeds", f"${total_proceeds_received:,.2f}", delta=f"${total_profit:+.2f} Profit")
             hc3.metric("Annualized Return (XIRR)", f"{xirr_pct:.1f}%")
             
-            # 3. Stacked Charts (Cashflow Bar Chart & Value Line Chart) exactly like screenshot!
             st.write("")
             
             # Bar Chart: Cumulative Cashflow
@@ -634,45 +643,31 @@ with tabs[2]:
             st.plotly_chart(fig_cash, use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
-            # Line Chart: Portfolio Value Curve with comparative S&P 500 Index!
+            # Line Chart: Portfolio Value Curve with S&P 500
             st.markdown('<div class="glass-card">', unsafe_allow_html=True)
             st.write("##### **Portfolio Value vs. S&P 500 Index**")
             
-            # Generate the comparative timeline DataFrame
-            # Portfolio Line (Capital Contributions + Unrealized gains curve)
             portfolio_val_line = []
             benchmark_val_line = []
             timeline_dates = []
             
-            # Calculate daily value mapping by iterating through benchmark dates
             if not benchmark_df.empty:
                 for idx, row in benchmark_df.iterrows():
                     curr_date = row["date"]
-                    # If index returned string date, convert
                     if isinstance(curr_date, str):
                         curr_date = pd.to_datetime(curr_date)
                         
-                    # Filter transactions up to curr_date to find holdings on this date
                     tx_up_to_date = df_filtered[df_filtered["date"] <= curr_date]
                     
                     if not tx_up_to_date.empty:
-                        # 1. Compute portfolio holdings at this date
                         h_on_date, _ = calculate_fifo_holdings(tx_up_to_date)
-                        
-                        # Fetch price for this date or use average cost/closest match
-                        # To keep it snappy and offline-compiling, we use benchmark daily cumulative returns
-                        # relative to transaction price!
-                        # Portfolio value = Cost basis on date + Gain factored by S&P 500 change as indicator,
-                        # or simple cumulative cash curve. Let's trace cost vs market performance!
                         p_cost = sum(h["total_cost"] for h in h_on_date.values())
-                        
-                        # Let's plot Portfolio Value (capital contributions) vs S&P 500 cumulative performance!
                         cum_index_pct = float(row["cumulative_return"])
                         p_value_spy_indicative = p_cost * cum_index_pct
                         
                         timeline_dates.append(curr_date)
-                        portfolio_val_line.append(p_cost) # Actual cash allocated
-                        benchmark_val_line.append(p_value_spy_indicative) # S&P 500 comparative value
+                        portfolio_val_line.append(p_cost)
+                        benchmark_val_line.append(p_value_spy_indicative)
                         
                 comp_df = pd.DataFrame({
                     "Date": timeline_dates,
@@ -704,20 +699,29 @@ with tabs[2]:
                 )
                 st.plotly_chart(fig_val, use_container_width=True)
             else:
-                # Fallback to simple line chart
                 fig_fallback = px.line(cashflow_plot_df, x="Date", y="Cumulative Cashflow")
                 st.plotly_chart(fig_fallback, use_container_width=True)
                 
             st.markdown('</div>', unsafe_allow_html=True)
 
-# ----------------- TAB 4: AI ANALYST CHAT (PLACEHOLDER) -----------------
+# ----------------- TAB 4: AI ANALYST CHAT -----------------
 with tabs[3]:
-    st.write("### 🤖 AI Analyst Chat")
+    st.write("### 🤖 Chat with your Stock Analyst Agent")
     if st.session_state.cleaned_df is None:
         st.info("⚠️ Please upload your transaction data in the **Data Upload** tab to provide financial context to your AI Analyst.")
     else:
-        # Layout metrics header
+        # Layout metrics variables
+        active_tickers = list(active_holdings.keys())
+        sectors_mapping = get_cached_sectors(active_tickers)
+        fundamentals = get_cached_fundamentals(active_tickers)
+        news_articles = get_cached_news(active_tickers)
+        
         total_market_val = sum(h["shares"] * current_prices.get(ticker, 0.0) for ticker, h in active_holdings.items())
+        total_cost_basis = sum(h["total_cost"] for h in active_holdings.values())
+        total_unrealized_gain = total_market_val - total_cost_basis
+        total_unrealized_pct = (total_unrealized_gain / total_cost_basis * 100) if total_cost_basis > 0 else 0.0
+        total_realized_gain = sum(realized_gains.values())
+        
         total_tx = len(df)
         unique_tickers = df["ticker"].nunique()
         
@@ -730,12 +734,119 @@ with tabs[3]:
             unsafe_allow_html=True
         )
         
-        # Latest News RSS Integration (Preparation for LLM context)
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.write("### 📰 Recent Portfolio Holdings News")
-        active_tickers = list(active_holdings.keys())
-        news_articles = get_cached_news(active_tickers)
+        # 2. Interactive suggest chips above the chat box!
+        st.write("###### **Suggested Questions:**")
+        chip_col1, chip_col2, chip_col3 = st.columns(3)
+        suggested_query = None
         
+        with chip_col1:
+            if st.button("🔍 What is my biggest risk?", use_container_width=True):
+                suggested_query = "What is my biggest risk based on my current portfolio holdings?"
+        with chip_col2:
+            if st.button("💡 What do you recommend now?", use_container_width=True):
+                suggested_query = "What key investment recommendations or rebalancing strategies do you recommend based on my asset weights?"
+        with chip_col3:
+            if st.button("📅 Any upcoming dividends?", use_container_width=True):
+                suggested_query = "Summarize my upcoming dividends and yields. Are there any ex-dividend dates I should watch?"
+
+        # 3. Chat conversation log container
+        chat_container = st.container()
+        
+        # Render previous messages
+        with chat_container:
+            for msg in st.session_state.chat_history:
+                if msg["role"] == "user":
+                    st.markdown(f'<div class="chat-bubble-user">{msg["content"]}</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="chat-bubble-assistant">{msg["content"]}</div>', unsafe_allow_html=True)
+
+        # 4. Handle text inputs / queries
+        user_input = st.chat_input("Ask your AI Analyst about your portfolio risk, performance, or potential strategy...")
+        
+        # If suggest chip or chat input is triggered
+        query = user_input or suggested_query
+        
+        if query:
+            # Check if key is available
+            if not st.session_state.groq_api_key:
+                st.error("❌ Groq API Key is not configured. Please enter your API Key in the Settings popover at the top right to start chatting!")
+            else:
+                # Add user message to history
+                st.session_state.chat_history.append({"role": "user", "content": query})
+                
+                # Show user query immediately in UI
+                with chat_container:
+                    st.markdown(f'<div class="chat-bubble-user">{query}</div>', unsafe_allow_html=True)
+                
+                # Compile complete portfolio context dynamically
+                holdings_context = []
+                for ticker, h in active_holdings.items():
+                    price = current_prices.get(ticker, 0.0)
+                    m_val = h["shares"] * price
+                    unreal = m_val - h["total_cost"]
+                    unreal_p = (unreal / h["total_cost"] * 100) if h["total_cost"] > 0 else 0.0
+                    
+                    holdings_context.append({
+                        "ticker": ticker,
+                        "name": fundamentals.get(ticker, {}).get("name", ticker),
+                        "shares": h["shares"],
+                        "avg_cost": h["avg_cost"],
+                        "price": price,
+                        "market_value": m_val,
+                        "gain": unreal,
+                        "gain_pct": unreal_p
+                    })
+                    
+                sector_weights_context = {}
+                for ticker, h in active_holdings.items():
+                    sec = sectors_mapping.get(ticker, "Other")
+                    val = h["shares"] * current_prices.get(ticker, 0.0)
+                    sector_weights_context[sec] = sector_weights_context.get(sec, 0.0) + val
+                    
+                dividends_context = []
+                for ticker in active_tickers:
+                    fund = fundamentals.get(ticker, {})
+                    dividends_context.append({
+                        "ticker": ticker,
+                        "yield": fund.get("dividend_yield", "0.00%"),
+                        "date": fund.get("dividend_date", "N/A")
+                    })
+                    
+                news_headlines_context = []
+                for art in news_articles:
+                    news_headlines_context.append({
+                        "ticker": art["ticker"],
+                        "title": art["title"],
+                        "publisher": art["publisher"]
+                    })
+                    
+                portfolio_context = {
+                    "total_value": total_market_val,
+                    "total_cost": total_cost_basis,
+                    "unrealized_gain": total_unrealized_gain,
+                    "unrealized_pct": total_unrealized_pct,
+                    "realized_gain": total_realized_gain,
+                    "active_holdings": holdings_context,
+                    "sector_weights": sector_weights_context,
+                    "dividends": dividends_context,
+                    "news_headlines": news_headlines_context
+                }
+                
+                # Fetch AI response
+                with st.spinner("Analyzing portfolio context and generating institutional response..."):
+                    ai_response = get_ai_response(
+                        messages=st.session_state.chat_history,
+                        api_key=st.session_state.groq_api_key,
+                        portfolio_context=portfolio_context
+                    )
+                
+                # Save AI response
+                st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
+                st.rerun()
+
+        # Display News feed below the chat so they can read current happenings too!
+        st.markdown('<div class="glass-card" style="margin-top: 30px;">', unsafe_allow_html=True)
+        st.write("### 📰 Recent Portfolio Holdings News")
         if news_articles:
             for art in news_articles:
                 st.markdown(
@@ -745,5 +856,3 @@ with tabs[3]:
         else:
             st.write("No recent articles found for active holdings.")
         st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.success("✅ Financial context and live news feeds successfully aggregated! The Chat LLM Client will be integrated in Phase 5.")
