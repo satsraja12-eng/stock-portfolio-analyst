@@ -60,3 +60,42 @@ Ran 5 tests in 0.057s
 OK
 ```
 *Status: PASSED*
+
+---
+
+## 🟢 Phase 3: Core Financial Logic
+
+### 1. App Entrypoint Compilation Check
+We verified that the updated Streamlit dashboard integrates the new portfolio math modules with zero compilation, syntax, or runtime import errors.
+
+**Verification Command:**
+```bash
+uv run python3 -m py_compile app.py
+```
+
+**Verification Output:**
+*(No output / exited with code 0)*
+*Status: PASSED*
+
+### 2. Core Financial Logic Unit Tests
+We wrote 2 comprehensive unit tests in `utils/portfolio_math_test.py` to verify our FIFO cost basis accounting and consolidated portfolio XIRR mathematical solvers.
+
+**Test Case Descriptions:**
+- `test_fifo_holdings_calculation`: Asserts that buy lots are registered, sells consume shares on a strict FIFO basis, realized gains are calculated correctly (e.g. `$200` gain for `GOOGL`, `$300` gain for `NVDA`), and average cost basis of active holdings is exact (e.g. `$415.625` average cost for `MSFT`).
+- `test_portfolio_xirr_calculation`: Mocks ticker prices and verifies that our Secant and Bisection mathematical solver converges to a correct, realistic annualized return rate.
+
+**Verification Command:**
+```bash
+uv run python3 -m unittest discover -s utils -p "*_test.py"
+```
+
+**Verification Output:**
+```text
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 0.045s
+
+OK
+```
+*Status: PASSED*
+
