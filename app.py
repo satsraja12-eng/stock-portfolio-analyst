@@ -7,7 +7,8 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta, date
 from dotenv import load_dotenv
 
-from utils.data_processing import validate_and_clean_csv
+from utils.data_processing import validate_and_clean_csv, load_portfolio_data, save_portfolio_data
+from utils.auth_manager import init_auth_state, is_authenticated, register_user, login_user, logout_user
 from utils.portfolio_math import calculate_fifo_holdings, fetch_current_prices, calculate_portfolio_xirr
 from utils.external_data import (
     fetch_sectors_for_tickers, 
@@ -167,6 +168,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Session State Initialization
+init_auth_state()
+
 if "cleaned_df" not in st.session_state:
     st.session_state.cleaned_df = None
 if "validation_message" not in st.session_state:
@@ -175,6 +178,39 @@ if "groq_api_key" not in st.session_state:
     st.session_state.groq_api_key = os.environ.get("GROQ_API_KEY", "")
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
+
+# Sidebar Authentication Flow
+with st.sidebar:
+    if is_authenticated():
+        st.write(f"Welcome, **{st.session_state.username}**!")
+        if st.button("Log Out"):
+            logout_user()
+            st.session_state.cleaned_df = None
+            st.rerun()
+    else:
+        st.write("### Guest Mode Active")
+        st.info("You are using the app as a Guest. Your data will only be saved for this session.")
+        st.write("---")
+        st.write("### Register / Log In")
+        auth_mode = st.radio("Select Action", ["Log In", "Register"], label_visibility="collapsed")
+        auth_username = st.text_input("Username")
+        auth_password = st.text_input("Password", type="password")
+        if st.button(auth_mode):
+            if auth_mode == "Register":
+                success, msg = register_user(auth_username, auth_password)
+                if success:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+            else:
+                success, msg = login_user(auth_username, auth_password)
+                if success:
+                    st.success(msg)
+                    loaded_df = load_portfolio_data()
+                    st.session_state.cleaned_df = loaded_df if not loaded_df.empty else None
+                    st.rerun()
+                else:
+                    st.error(msg)
 
 # Caching wrappers for API data
 @st.cache_data(ttl=300)
@@ -232,6 +268,11 @@ def get_ticker_html(active_holdings, current_prices):
 active_holdings = {}
 current_prices = {}
 realized_gains = {}
+
+if st.session_state.cleaned_df is None and is_authenticated():
+    loaded_df = load_portfolio_data()
+    if not loaded_df.empty:
+        st.session_state.cleaned_df = loaded_df
 
 if st.session_state.cleaned_df is not None:
     active_holdings, realized_gains = calculate_fifo_holdings(st.session_state.cleaned_df)
@@ -331,6 +372,7 @@ with tabs[0]:
             cleaned_df, msg = validate_and_clean_csv(data_source)
             st.session_state.cleaned_df = cleaned_df
             st.session_state.validation_message = msg
+            save_portfolio_data(cleaned_df)
             active_holdings, realized_gains = calculate_fifo_holdings(cleaned_df)
             st.cache_data.clear() # clear cache to get fresh prices
             current_prices = get_cached_prices(list(active_holdings.keys()))

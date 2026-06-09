@@ -1,6 +1,9 @@
 import pandas as pd
 from typing import Union, Tuple
 import io
+import streamlit as st
+from utils.auth_manager import is_authenticated
+from database.db_models import SessionLocal, Transaction
 
 def validate_and_clean_csv(file_source: Union[str, io.BytesIO, io.StringIO]) -> Tuple[pd.DataFrame, str]:
     """
@@ -117,3 +120,60 @@ def validate_and_clean_csv(file_source: Union[str, io.BytesIO, io.StringIO]) -> 
                 
     success_msg = f"Data validation successful! Cleaned and sorted {len(df)} transactions chronologically."
     return df, success_msg
+
+def load_portfolio_data() -> pd.DataFrame:
+    """Loads portfolio data depending on authentication status."""
+    if is_authenticated():
+        user_id = st.session_state.get("user_id")
+        db = SessionLocal()
+        try:
+            txs = db.query(Transaction).filter(Transaction.user_id == user_id).all()
+            if not txs:
+                return pd.DataFrame()
+            
+            data = [{
+                "ticker": t.ticker,
+                "date": pd.to_datetime(t.date),
+                "transaction_type": t.transaction_type,
+                "quantity": t.quantity,
+                "price": t.price
+            } for t in txs]
+            df = pd.DataFrame(data)
+            return df.sort_values(by="date").reset_index(drop=True)
+        finally:
+            db.close()
+    else:
+        # Guest Mode
+        return st.session_state.get("portfolio_df", pd.DataFrame())
+
+def save_portfolio_data(df: pd.DataFrame):
+    """Saves portfolio data depending on authentication status."""
+    if is_authenticated():
+        user_id = st.session_state.get("user_id")
+        db = SessionLocal()
+        try:
+            # Replace existing to avoid duplicates on re-upload
+            db.query(Transaction).filter(Transaction.user_id == user_id).delete()
+            
+            for _, row in df.iterrows():
+                tx = Transaction(
+                    user_id=user_id,
+                    ticker=row["ticker"],
+                    date=row["date"].strftime('%Y-%m-%d'),
+                    transaction_type=row["transaction_type"],
+                    quantity=row["quantity"],
+                    price=row["price"]
+                )
+                db.add(tx)
+            db.commit()
+            
+            # also save to session state for fast cache
+            st.session_state["portfolio_df"] = df
+        except Exception as e:
+            db.rollback()
+            raise e
+        finally:
+            db.close()
+    else:
+        # Guest Mode
+        st.session_state["portfolio_df"] = df

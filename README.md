@@ -43,3 +43,18 @@ Launch the dev server:
 ```bash
 uv run streamlit run app.py
 ```
+
+---
+
+## Implemented Phases Checklist
+
+All code for the below phases has been **merged and fully tested**.
+
+| Phase | Title | Delivered Components | Status |
+| :--- | :--- | :--- | :--- |
+| **Phase 1** | Environment Setup & Initialization | Project structure, `uv` dependencies, `.env.example`, `README.md`. | ✅ Merged & Tested |
+| **Phase 2** | Data Validation & Cleaning | Robust CSV validation, ticker normalization, ephemeral Session State setup. | ✅ Merged & Tested |
+| **Phase 3** | Core Financial Logic | FIFO cost basis engine, robust XIRR calculation, total ROI tracking. | ✅ Merged & Tested |
+| **Phase 4** | External Data Integration | Market sectors, dividend/fundamentals fetching, comparative S&P 500 benchmarks. | ✅ Merged & Tested |
+| **Phase 5** | UI & AI Integration | Full Streamlit dashboard, Groq API LLM integration (`llm_agent.py`), Context-aware prompting. | ✅ Merged & Tested |
+| **Phase 6** | User Authentication & Persistence | **Brief Description**: Added a frictionless "Guest Mode" default. For users who want to persist their portfolio, a secure authentication sidebar (with `bcrypt` password hashing) was built. Connected to an SQLite database managed via `SQLAlchemy` where user transactions are permanently stored for future sessions. | ✅ Merged & Tested |
