@@ -22,3 +22,7 @@ Thumbs.db
 # Databases
 *.db
 portfolio.db
+
+# Other projects in workspace
+project-status-agent/
+Wake-County-RAG/
